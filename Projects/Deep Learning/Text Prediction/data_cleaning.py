@@ -93,7 +93,7 @@ emb.shape
 """## Split into Training and Testing ##"""
 
 n_samples = len(X)
-reduced_size = n_samples // 3  # Reduce to 1/3
+reduced_size = n_samples // 10000  # Reduce to 1/3
 indices = torch.randperm(n_samples)[:reduced_size]
 X_reduced = X[indices]
 y_reduced = y[indices]
