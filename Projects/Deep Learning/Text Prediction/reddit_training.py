@@ -16,7 +16,9 @@ import numpy as np
 import torch
 from torch import nn
 import torch.nn.functional as F
+from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
 
 """## Data Preparation ##"""
 
@@ -93,19 +95,19 @@ emb.shape
 
 """## Split into Training and Testing ##"""
 
-n_samples = len(X)
-reduced_size = n_samples // 10000  # Reduce data size
-indices = torch.randperm(n_samples)[:reduced_size]
-X_reduced = X[indices]
-y_reduced = y[indices]
+# n_samples = len(X)
+# reduced_size = n_samples // 10000  # Reduce data size
+# indices = torch.randperm(n_samples)[:reduced_size]
+# X_reduced = X[indices]
+# y_reduced = y[indices]
 
 
 X_train, X_test, y_train, y_test = train_test_split(
-    X_reduced, y_reduced, test_size=0.2, random_state=42
+    X, y, test_size=0.2, random_state=1
 )
 
 X_train, X_val, y_train, y_val = train_test_split(
-    X_train, y_train, test_size=0.2, random_state=42
+    X_train, y_train, test_size=0.2, random_state=1
 )
 
 print(f"Training data: X_train={X_train.shape}, y_train={y_train.shape}")
@@ -128,6 +130,29 @@ X_train.shape, X_val.shape, X_test.shape
 
 y_train.shape, y_val.shape, y_test.shape
 
+"""## Preparing Torch Dataset and DataLoader ##"""
+
+# create custom dataset type
+class TextPredictionDataset(Dataset):
+  def __init__(self, X, y):
+    self.X = X
+    self.y = y
+
+  def __len__(self):
+    return len(self.X)
+
+  def __getitem__(self, idx):
+    return self.X[idx], self.y[idx]
+
+BATCH_SIZE = 64
+train_dataset = TextPredictionDataset(X_train, y_train)
+val_dataset = TextPredictionDataset(X_val, y_val)
+test_dataset = TextPredictionDataset(X_test, y_test)
+
+train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
+test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
+
 """## Create Trigram Model ##"""
 
 class TrigramModel(nn.Module):
@@ -136,6 +161,7 @@ class TrigramModel(nn.Module):
     self.C = nn.Embedding(vocab_size, embedding_dim)  # Embedding layer
     self.linear_stack = nn.Sequential(
       nn.Linear(block_size * embedding_dim, hidden_size),
+      nn.Linear(hidden_size, hidden_size),
       nn.Linear(hidden_size, hidden_size),
       nn.Tanh(),
       nn.Linear(hidden_size, vocab_size)  # Output layer
@@ -155,12 +181,12 @@ model
 torch.manual_seed(1)
 
 # Hyperparameters
-embedding_dim = 10
-block_size = 2  # Trigram context size
-hidden_size = 300
-vocab_size = num_unique_words
-epochs = 1000
-lr = 0.01
+EMBEDDING_DIM = 10
+BLOCK_SIZE = 2  # Trigram context size
+HIDDEN_SIZE = 100
+VOCAB_SIZE = num_unique_words
+EPOCHS = 100
+LR = 0.01
 
 def train_model(embedding_dim, block_size, hidden_size, vocab_size, epochs=1000, lr=0.01):
   # Initialize model, loss function, and optimizer
@@ -169,34 +195,85 @@ def train_model(embedding_dim, block_size, hidden_size, vocab_size, epochs=1000,
   loss_fun = nn.CrossEntropyLoss()
   optimizer = torch.optim.Adam(params=model.parameters(), lr=lr)
 
-  # Track losses
-  epoch_count = []
-  loss_values = []
-  test_loss_values = []
-
-  # Training loop
   for epoch in range(epochs):
-    # Training phase
+    # training
     model.train()
-    y_pred = model(X_train)
-    loss = loss_fun(y_pred, y_train)
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
+    total_train_loss = 0
+    for batch_X, batch_y in train_loader:
+      batch_X, batch_y = batch_X.to(device), batch_y.to(device)
+      y_pred = model(batch_X)
+      loss = loss_fun(y_pred, batch_y)
+      optimizer.zero_grad()
+      loss.backward()
+      optimizer.step()
+      total_train_loss = loss.item()
+      # preserve gpu memory
+      del batch_X, batch_y
+      torch.cuda.empty_cache()
 
-    # Validation phase
+    # validation
     model.eval()
+    total_val_loss = 0
     with torch.no_grad():
-      test_pred = model(X_val)
-      test_loss = loss_fun(test_pred, y_val)
+      for batch_X, batch_y in val_loader:
+        batch_X, batch_y = batch_X.to(device), batch_y.to(device)
+        val_pred = model(batch_X)
+        val_loss = loss_fun(val_pred, batch_y)
+        total_val_loss += val_loss.item()
+        del batch_X, batch_y
+        torch.cuda.empty_cache()
 
-    # Log metrics
+    # log metrics
     if epoch % 10 == 0:
-      epoch_count.append(epoch)
-      loss_values.append(loss.item())
-      test_loss_values.append(test_loss.item())
-      print(f"Epoch: {epoch} | Loss: {loss.item():.4f} | Test Loss: {test_loss.item():.4f}")
+      print(
+          f"Epoch: {epoch} | Training Loss: {total_train_loss / len(train_loader):.4f} "
+          f"| Validation Loss: {total_val_loss / len(val_loader):.4f}"
+      )
 
-  return
+  return model
 
-train_model(10, 2, 100, num_unique_words, epochs = 100, lr = 0.001)
+trained_model = train_model(
+    embedding_dim=EMBEDDING_DIM,
+    block_size=BLOCK_SIZE,
+    hidden_size=HIDDEN_SIZE,
+    vocab_size=VOCAB_SIZE,
+    epochs=EPOCHS,
+    lr=LR
+)
+
+def evaluate_model(model, dataloader, criterion, device):
+  model.eval()
+  total_loss = 0
+  all_preds = []
+  all_labels = []
+
+  with torch.no_grad():
+    for batch in dataloader:
+      # unpack batch of data
+      X_batch, y_batch = batch
+      X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+
+      logits = model(X_batch)
+      loss = criterion(logits, y_batch)
+      total_loss += loss.item()
+
+      preds = torch.argmax(logits, dim=1)
+      all_preds.extend(preds.cpu().numpy())
+      all_labels.extend(y_batch.cpu().numpy())
+
+      del X_batch, y_batch
+      torch.cuda.empty_cache()
+
+  accuracy = accuracy_score(all_labels, all_preds)
+  avg_loss = total_loss / len(dataloader)
+
+  print(f"Test Loss: {avg_loss:.4f}")
+  print(f"Test Accuracy: {accuracy:.4f}")
+
+  return avg_loss, accuracy
+
+test_loss, test_accuracy = evaluate_model(
+    model, test_loader, nn.CrossEntropyLoss(), device
+)
+
+print(f"Test loss: {test_loss}, Test Accuracy: {test_accuracy}")
