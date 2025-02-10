@@ -106,9 +106,9 @@ for product, count in var_2_df['product'].value_counts().items():
     oversampled_df.append(product_df)
 
 # Concatenate the list of resampled dataframes back into one dataframe
-oversampled_policy_df = pd.concat(oversampled_df)
+oversampled_var_2_df = pd.concat(oversampled_df)
 
-policy_df = oversampled_policy_df
+var_2_df = oversampled_var_2_df
 
 var_2_df['cust_tenure_at_purchase_grp'].value_counts()
 encoder = LabelEncoder()
@@ -153,7 +153,7 @@ var_3_df = pd.read_parquet("")
 var_3_df.columns
 
 var_3_df.drop(columns=[
-    'agent_age', 'agent_gender', 'agent_marital', 'agent_tenure',
+    'var_3_age', 'var_3_gender', 'var_3_marital', 'var_3_tenure',
     'cnt_converted', 'annual_premium_cnvrt', 'pct_lapsed', 'pct_cancel',
     'pct_inforce', 'pct_SX0_unknown',
     'pct_SX1_male', 'pct_SX2_female', 'pct_AG01_lt20', 'pct_AG02_20to24',
@@ -162,7 +162,7 @@ var_3_df.drop(columns=[
     'pct_AG09_55to59', 'pct_AG10_60up',
 ], axis=1, inplace=True)
 
-type(var_3_df['agent_product_expertise'].iloc[0][0])
+type(var_3_df['var_3_product_expertise'].iloc[0][0])
 
 def process_expertise(item):
     new_list = []
@@ -170,7 +170,7 @@ def process_expertise(item):
         new_list.append(int(elem[-1]))
     return new_list
 
-var_3_df['agent_product_expertise'] = var_3_df['agent_product_expertise'].apply(lambda item: process_expertise(item))
+var_3_df['var_3_product_expertise'] = var_3_df['var_3_product_expertise'].apply(lambda item: process_expertise(item))
 
 """### Summarizing the Data ###"""
 
@@ -193,69 +193,69 @@ var_2_df = merged_data[['secuityno', 'product', 'product_grp', 'mean_premium']]
 The matrix created in this step will serve as A, which can then be used for matrix factorization where A = UV^T.
 """
 
-policy_df["mean_premium"] = (policy_df["mean_premium"] - policy_df["mean_premium"].mean()) / policy_df["mean_premium"].std()
+var_2_df["mean_premium"] = (var_2_df["mean_premium"] - var_2_df["mean_premium"].mean()) / var_2_df["mean_premium"].std()
 var_1_df["age"] = (var_1_df["age"] - var_1_df["age"].mean()) / var_1_df["age"].std()
 
-unique_clients = var_1_df["secuityno"].unique()
-unique_policies = policy_df["product"].unique()
+unique_var_1s = var_1_df["secuityno"].unique()
+unique_var_3s = var_2_df["product"].unique()
 
-# Create mappings for client and policy IDs to matrix indices
-var_1_to_index = {client: idx for idx, client in enumerate(unique_clients)}
-policy_to_index = {policy: idx for idx, policy in enumerate(unique_policies)}
-index_to_policy = {idx: policy for policy, idx in policy_to_index.items()}  # Reverse mapping
+# Create mappings for var_1 and var_2 IDs to matrix indices
+var_1_to_index = {var_1: idx for idx, var_1 in enumerate(unique_var_1s)}
+var_2_to_index = {var_2: idx for idx, var_2 in enumerate(unique_var_3s)}
+index_to_var_2 = {idx: var_2 for var_2, idx in var_2_to_index.items()}  # Reverse mapping
 
-# Number of clients and policies
-num_clients = len(unique_clients)
-num_policies = len(unique_policies)
+# Number of var_1s and var_3s
+num_var_1s = len(unique_var_1s)
+num_var_3s = len(unique_var_3s)
 
 # Manually set correct feature sizes
-client_feature_size = len(["marryd", "cltsex", "economic_status", "household_size_grp", "family_size_grp", "age", "cust_tenure_at_purchase_grp"])
-policy_feature_size = len(["product_grp", "mean_premium"])
+var_1_feature_size = len(["marryd", "cltsex", "economic_status", "household_size_grp", "family_size_grp", "age", "cust_tenure_at_purchase_grp"])
+var_2_feature_size = len(["product_grp", "mean_premium"])
 
 data = []
-for client in unique_clients:
-    client_id = client_to_index[client]
-    policies_client_bought = policy_df[policy_df['secuityno'] == client]['product'].unique()
-    policies_client_didnt_buy = [p for p in unique_policies if p not in policies_client_bought]
+for var_1 in unique_var_1s:
+    var_1_id = var_1_to_index[var_1]
+    var_3s_var_1_bought = var_2_df[var_2_df['secuityno'] == var_1]['product'].unique()
+    var_3s_var_1_didnt_buy = [p for p in unique_var_3s if p not in var_3s_var_1_bought]
 
-    client_features = client_df.loc[client_df['secuityno'] == client, [
+    var_1_features = var_1_df.loc[var_1_df['secuityno'] == var_1, [
         "marryd", "cltsex", "economic_status", "household_size_grp", "family_size_grp", "age", "cust_tenure_at_purchase_grp"
     ]].values.flatten().astype(np.float32)
 
     # Ensure fixed shape (truncate if too long, pad if too short)
-    client_features = np.resize(client_features, client_feature_size)
+    var_1_features = np.resize(var_1_features, var_1_feature_size)
 
-    for policy in policies_client_bought:
-        policy_id = policy_to_index[policy]
-        policy_features = policy_df[policy_df['product'] == policy][["product_grp", "mean_premium"]].values.flatten().astype(np.float32)
-        policy_features = np.resize(policy_features, policy_feature_size)
-        data.append((client_id, policy_id, client_features, policy_features, 1))
+    for var_2 in var_3s_var_1_bought:
+        var_2_id = var_2_to_index[var_2]
+        var_2_features = var_2_df[var_2_df['product'] == var_2][["product_grp", "mean_premium"]].values.flatten().astype(np.float32)
+        var_2_features = np.resize(var_2_features, var_2_feature_size)
+        data.append((var_1_id, var_2_id, var_1_features, var_2_features, 1))
 
-    for policy in policies_client_didnt_buy:
-        policy_id = policy_to_index[policy]
-        policy_features = policy_df[policy_df['product'] == policy][["product_grp", "mean_premium"]].values.flatten().astype(np.float32)
-        policy_features = np.resize(policy_features, policy_feature_size)
-        data.append((client_id, policy_id, client_features, policy_features, 0))
+    for var_2 in var_3s_var_1_didnt_buy:
+        var_2_id = var_2_to_index[var_2]
+        var_2_features = var_2_df[var_2_df['product'] == var_2][["product_grp", "mean_premium"]].values.flatten().astype(np.float32)
+        var_2_features = np.resize(var_2_features, var_2_feature_size)
+        data.append((var_1_id, var_2_id, var_1_features, var_2_features, 0))
 
 
 
 # Convert data to TensorFlow dataset
 def convert_to_tf_dataset(data):
-    client_ids, policy_ids, client_features, policy_features, labels = zip(*data)
+    var_1_ids, var_2_ids, var_1_features, var_2_features, labels = zip(*data)
 
     # Ensure features are stacked properly to form rectangular arrays
-    client_features = np.stack(client_features).astype(np.float32)
-    policy_features = np.stack(policy_features).astype(np.float32)
+    var_1_features = np.stack(var_1_features).astype(np.float32)
+    var_2_features = np.stack(var_2_features).astype(np.float32)
     labels = np.array(labels, dtype=np.float32)
 
     # Ensure labels are exactly 0 or 1
     print("Unique labels:", np.unique(labels))
 
     dataset = tf.data.Dataset.from_tensor_slices({
-        "client_id": np.array(client_ids, dtype=np.int32),
-        "policy_id": np.array(policy_ids, dtype=np.int32),
-        "client_features": client_features,
-        "policy_features": policy_features,
+        "var_1_id": np.array(var_1_ids, dtype=np.int32),
+        "var_2_id": np.array(var_2_ids, dtype=np.int32),
+        "var_1_features": var_1_features,
+        "var_2_features": var_2_features,
         "label": labels
     })
     return dataset
@@ -282,52 +282,52 @@ shuffled = interaction_dataset.shuffle(dataset_size, seed=40, reshuffle_each_ite
 train = shuffled.take(train_size)
 test = shuffled.skip(train_size)
 
-class ClientPolicyModeller(tf.keras.Model):
-    def __init__(self, num_clients, num_policies, embedding_dim=64):
+class var_1var_2Modeller(tf.keras.Model):
+    def __init__(self, num_var_1s, num_var_3s, embedding_dim=64):
         super().__init__()
 
-        # Reduce client ID embedding size
-        self.client_embeddings = tf.keras.layers.Embedding(num_clients, embedding_dim // 2)
-        self.policy_embeddings = tf.keras.layers.Embedding(num_policies, embedding_dim // 2)
+        # Reduce var_1 ID embedding size
+        self.var_1_embeddings = tf.keras.layers.Embedding(num_var_1s, embedding_dim // 2)
+        self.var_2_embeddings = tf.keras.layers.Embedding(num_var_3s, embedding_dim // 2)
 
         # Increase metadata feature embeddings
-        self.client_dense = tf.keras.layers.Dense(embedding_dim, activation='relu')
-        self.client_dropout = tf.keras.layers.Dropout(0.4)
-        self.policy_dense = tf.keras.layers.Dense(embedding_dim, activation='relu')
-        self.policy_dropout = tf.keras.layers.Dropout(0.4)
+        self.var_1_dense = tf.keras.layers.Dense(embedding_dim, activation='relu')
+        self.var_1_dropout = tf.keras.layers.Dropout(0.4)
+        self.var_2_dense = tf.keras.layers.Dense(embedding_dim, activation='relu')
+        self.var_2_dropout = tf.keras.layers.Dropout(0.4)
 
         # Final projection layer to align dimensions
         self.final_dense = tf.keras.layers.Dense(embedding_dim, activation='relu')
 
     def call(self, inputs: Dict[Text, tf.Tensor]):
-        client = inputs["client_id"]
-        policy = inputs["policy_id"]
-        client_features = inputs["client_features"]
-        policy_features = inputs["policy_features"]
+        var_1 = inputs["var_1_id"]
+        var_2 = inputs["var_2_id"]
+        var_1_features = inputs["var_1_features"]
+        var_2_features = inputs["var_2_features"]
 
-        # Embed client ID and policy ID
-        client_emb = self.client_embeddings(client)
-        policy_emb = self.policy_embeddings(policy)
+        # Embed var_1 ID and var_2 ID
+        var_1_emb = self.var_1_embeddings(var_1)
+        var_2_emb = self.var_2_embeddings(var_2)
 
         # Process metadata features
-        client_feat = self.client_dense(client_features)
-        policy_feat = self.policy_dense(policy_features)
+        var_1_feat = self.var_1_dense(var_1_features)
+        var_2_feat = self.var_2_dense(var_2_features)
 
         # Concatenate embeddings and metadata features
-        combined_client = tf.concat([client_emb, client_feat], axis=1)
-        combined_policy = tf.concat([policy_emb, policy_feat], axis=1)
+        combined_var_1 = tf.concat([var_1_emb, var_1_feat], axis=1)
+        combined_var_2 = tf.concat([var_2_emb, var_2_feat], axis=1)
 
         # Final projection to align dimensions
-        combined_client = self.final_dense(combined_client)
-        combined_policy = self.final_dense(combined_policy)
+        combined_var_1 = self.final_dense(combined_var_1)
+        combined_var_2 = self.final_dense(combined_var_2)
 
-        return tf.keras.activations.sigmoid(tf.reduce_sum(combined_client * combined_policy, axis=1, keepdims=True))
+        return tf.keras.activations.sigmoid(tf.reduce_sum(combined_var_1 * combined_var_2, axis=1, keepdims=True))
 
 @tf.keras.saving.register_keras_serializable()
 class MicroXL(tfrs.models.Model):
-    def __init__(self, num_clients, num_policies):
+    def __init__(self, num_var_1s, num_var_3s):
         super().__init__()
-        self.ranking_model = ClientPolicyModeller(num_clients, num_policies)
+        self.ranking_model = var_1var_2Modeller(num_var_1s, num_var_3s)
         self.task = tfrs.tasks.Ranking(
             loss=tf.keras.losses.BinaryCrossentropy(),
             #metrics=[tfr.keras.metrics.NDCGMetric(name="ndcg")]
@@ -355,16 +355,16 @@ except ValueError:
     strategy = tf.distribute.get_strategy()  # Default to CPU/GPU
     print("Running on CPU/GPU")
 
-NUM_CLIENTS = client_df['secuityno'].nunique()
-NUM_POLICIES = policy_df['product'].nunique()
+NUM_var_1S = var_1_df['secuityno'].nunique()
+NUM_var_3s = var_2_df['product'].nunique()
 
-NUM_CLIENTS, NUM_POLICIES
+NUM_var_1S, NUM_var_3s
 
 np.random.seed(40)
 tf.random.set_seed(40)
 
 with strategy.scope():  # Place model inside TPU scope
-    model = MicroXL(num_clients=NUM_CLIENTS, num_policies=NUM_POLICIES)
+    model = MicroXL(num_var_1s=NUM_var_1S, num_var_3s=NUM_var_3s)
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.0003))
 
 # Train the model
@@ -375,32 +375,32 @@ model.save('XLMicro_v3.keras')
 
 """## Model Testing/Inference ##"""
 
-# Function to recommend policies
-def recommend_policies(model, client_id, client_features, top_k=2):
-    policy_ids = np.array(list(policy_to_index.values()), dtype=np.int32)
+# Function to recommend var_3s
+def recommend_var_3s(model, var_1_id, var_1_features, top_k=2):
+    var_2_ids = np.array(list(var_2_to_index.values()), dtype=np.int32)
 
-    # Ensure all unique policies are retrieved
-    policy_features = policy_df.groupby("product").first().reindex(unique_policies)[["product_grp", "mean_premium"]]
-    policy_features = policy_features.fillna(0).to_numpy(dtype=np.float32)  # Handle any missing values
+    # Ensure all unique var_3s are retrieved
+    var_2_features = var_2_df.groupby("product").first().reindex(unique_var_3s)[["product_grp", "mean_premium"]]
+    var_2_features = var_2_features.fillna(0).to_numpy(dtype=np.float32)  # Handle any missing values
 
-    client_ids = np.full((num_policies,), client_id, dtype=np.int32)
-    client_features = np.tile(client_features.reshape(1, -1), (num_policies, 1))
+    var_1_ids = np.full((num_var_3s,), var_1_id, dtype=np.int32)
+    var_1_features = np.tile(var_1_features.reshape(1, -1), (num_var_3s, 1))
 
-    # Ensure correct shape for policy_features
-    if policy_features.shape[0] != num_policies:
-        raise ValueError(f"policy_features shape mismatch: Expected ({num_policies}, {policy_feature_size}), but got {policy_features.shape}")
+    # Ensure correct shape for var_2_features
+    if var_2_features.shape[0] != num_var_3s:
+        raise ValueError(f"var_2_features shape mismatch: Expected ({num_var_3s}, {var_2_feature_size}), but got {var_2_features.shape}")
 
     inputs = {
-        "client_id": client_ids,
-        "policy_id": policy_ids,
-        "client_features": client_features.astype(np.float32),
-        "policy_features": policy_features.astype(np.float32)  # Ensure proper shape
+        "var_1_id": var_1_ids,
+        "var_2_id": var_2_ids,
+        "var_1_features": var_1_features.astype(np.float32),
+        "var_2_features": var_2_features.astype(np.float32)  # Ensure proper shape
     }
 
     scores = model(inputs).numpy().flatten()
     top_k_indices = np.argsort(scores)[-top_k:][::-1]
-    recommended_policy_ids = [index_to_policy[idx] for idx in top_k_indices]  # Convert back to original policy IDs
-    return recommended_policy_ids, scores[top_k_indices]
+    recommended_var_2_ids = [index_to_var_2[idx] for idx in top_k_indices]  # Convert back to original var_2 IDs
+    return recommended_var_2_ids, scores[top_k_indices]
 
 
 
@@ -412,17 +412,17 @@ def evaluate_model(model, test_data, top_k=2):
     total_samples = 0
 
     for test_sample in test_data:
-        client_id = test_sample["client_id"].numpy()
-        true_policy = test_sample["policy_id"].numpy()
-        client_features = test_sample["client_features"].numpy()
+        var_1_id = test_sample["var_1_id"].numpy()
+        true_var_2 = test_sample["var_2_id"].numpy()
+        var_1_features = test_sample["var_1_features"].numpy()
 
-        # Convert true_policy to original if needed
-        if true_policy in index_to_policy:
-            true_policy = index_to_policy[true_policy]  # Ensure consistency with mapped policies
+        # Convert true_var_2 to original if needed
+        if true_var_2 in index_to_var_2:
+            true_var_2 = index_to_var_2[true_var_2]  # Ensure consistency with mapped var_3s
 
-        recommended_policies, _ = recommend_policies(model, client_id, client_features, top_k)
+        recommended_var_3s, _ = recommend_var_3s(model, var_1_id, var_1_features, top_k)
 
-        if true_policy in recommended_policies:
+        if true_var_2 in recommended_var_3s:
             correct_predictions += 1
 
         total_samples += 1
@@ -447,157 +447,157 @@ evaluate_model(model, train, top_k=2)
 
 import random
 
-class Agent:
-    def __init__(self, id, effectiveness_rating, confident_policies):
+class var_3:
+    def __init__(self, id, effectiveness_rating, confident_var_3s):
         self.id = id
         self.effectiveness_rating = effectiveness_rating
-        self.expertise = confident_policies  # List of policies agent is confident in
-        self.clients = set()
-        self.num_clients = 0
+        self.expertise = confident_var_3s  # List of var_3s var_3 is confident in
+        self.var_1s = set()
+        self.num_var_1s = 0
         self.is_available = True  # Starts available
 
-    def assign_client(self, client_id):
-        # Flag to check if the agent is overworked
+    def assign_var_1(self, var_1_id):
+        # Flag to check if the var_3 is overworked
         if not self.is_available:
-            raise ValueError(f"Agent {self.id} has reached max capacity")
+            raise ValueError(f"var_3 {self.id} has reached max capacity")
         else:
-            self.clients.add(client_id)
-            self.num_clients += 1
-            if self.num_clients > 10:  # Max capacity for agent
+            self.var_1s.add(var_1_id)
+            self.num_var_1s += 1
+            if self.num_var_1s > 10:  # Max capacity for var_3
                 self.is_available = False
 
     def update_availability(self):
         # Dynamically update availability based on workload
-        if self.num_clients <= 10:
+        if self.num_var_1s <= 10:
             self.is_available = True
         else:
             self.is_available = False
 
-    def unassign_client(self, client_id):
-        self.clients.remove(client_id)
-        self.num_clients -=1
+    def unassign_var_1(self, var_1_id):
+        self.var_1s.remove(var_1_id)
+        self.num_var_1s -=1
         return
 
 class Cluster:
     def __init__(self, label, product_col):
         self.label = label
-        self.available_agents = 0
-        self.agents = []
+        self.available_var_3s = 0
+        self.var_3s = []
         self.product_col = product_col
-        self.agent_tracker = {}
+        self.var_3_tracker = {}
 
-    def get_agents(self, data):
-        agent_ids = data['agntnum'].unique()
-        agent_effectiveness = data[f'pct_prod_{self.product_col}_cnvrt']  # Effectiveness rating
-        agent_confident_policies = data['agent_product_expertise']  # List of policies each agent is confident in
+    def get_var_3s(self, data):
+        var_3_ids = data['agntnum'].unique()
+        var_3_effectiveness = data[f'pct_prod_{self.product_col}_cnvrt']  # Effectiveness rating
+        var_3_confident_var_3s = data['var_3_product_expertise']  # List of var_3s each var_3 is confident in
 
         # Function to check confidence based on the product column
-        def confident(policy_id, agent_confident_policies):
-            if policy_id in agent_confident_policies:
+        def confident(var_2_id, var_3_confident_var_3s):
+            if var_2_id in var_3_confident_var_3s:
                 return 1
             else:
                 return 0
 
-        # Create agents and sort them based on effectiveness and confidence
-        self.agents = sorted(
+        # Create var_3s and sort them based on effectiveness and confidence
+        self.var_3s = sorted(
             [
-                Agent(agent_id, rating, expertise)
-                for agent_id, rating, expertise in zip(agent_ids, agent_effectiveness, agent_confident_policies)
+                var_3(var_3_id, rating, expertise)
+                for var_3_id, rating, expertise in zip(var_3_ids, var_3_effectiveness, var_3_confident_var_3s)
             ],
             key=lambda x: (x.effectiveness_rating, confident(self.product_col, x.expertise)),
             reverse=True
         )
 
-        for agent in self.agents:
-            self.agent_tracker[agent.id] = agent
+        for var_3 in self.var_3s:
+            self.var_3_tracker[var_3.id] = var_3
 
-        self.available_agents = len(self.agents)
+        self.available_var_3s = len(self.var_3s)
 
-    def assign_next_available_agent(self, client_id):
-        for agent in self.agents:
-            if agent.is_available:
-                agent.assign_client(client_id)
-                return agent.id
-        # No available agent in this cluster
+    def assign_next_available_var_3(self, var_1_id):
+        for var_3 in self.var_3s:
+            if var_3.is_available:
+                var_3.assign_var_1(var_1_id)
+                return var_3.id
+        # No available var_3 in this cluster
         return 0
 
 class WorkloadManager:
-    def __init__(self, agent_df):
+    def __init__(self, var_3_df):
         self.clusters = {}
-        self.total_agents = 0
-        self.policy_to_cluster = {
+        self.total_var_3s = 0
+        self.var_2_to_cluster = {
             0: [5], 2: [7], 4: [4, 3],
             6: [9, 0], 7: [4], 8: [8, 1, 2],
             9: [5]
         }
-        # set up client to (agent, cluster label) pairs
-        self.client_assignments = {}
-        self.unassigned_clients = []
+        # set up var_1 to (var_3, cluster label) pairs
+        self.var_1_assignments = {}
+        self.unassigned_var_1s = []
 
-        # Reverse mapping from cluster to policies (this needs to be a dictionary, not a set)
-        self.cluster_to_policy = {}
-        for policy_id, cluster_list in self.policy_to_cluster.items():
+        # Reverse mapping from cluster to var_3s (this needs to be a dictionary, not a set)
+        self.cluster_to_var_2 = {}
+        for var_2_id, cluster_list in self.var_2_to_cluster.items():
             for cluster_id in cluster_list:
-                self.cluster_to_policy[cluster_id] = policy_id
+                self.cluster_to_var_2[cluster_id] = var_2_id
 
-        # Populate clusters based on agent_df
-        for label in agent_df['cluster'].unique():
-            # Get the relevant policy(s) for this cluster
-            policy_for_cluster = self.cluster_to_policy.get(label)
-            if policy_for_cluster is not None:
-                cluster = Cluster(label, product_col=policy_for_cluster)  # Assign the appropriate policy's product column
-                cluster_data = agent_df[agent_df['cluster'] == label]
-                cluster.get_agents(cluster_data)
+        # Populate clusters based on var_3_df
+        for label in var_3_df['cluster'].unique():
+            # Get the relevant var_2(s) for this cluster
+            var_2_for_cluster = self.cluster_to_var_2.get(label)
+            if var_2_for_cluster is not None:
+                cluster = Cluster(label, product_col=var_2_for_cluster)  # Assign the appropriate var_2's product column
+                cluster_data = var_3_df[var_3_df['cluster'] == label]
+                cluster.get_var_3s(cluster_data)
                 self.clusters[label] = cluster
 
-        self.total_agents = sum([cluster.available_agents for cluster in self.clusters.values()])
+        self.total_var_3s = sum([cluster.available_var_3s for cluster in self.clusters.values()])
 
-    def assign_client_to_agent(self, recommended_policies, client_id):
-        if client_id in self.client_assignments.keys():
-            print(f"Client with id {client_id} has already been assigned.")
+    def assign_var_1_to_var_3(self, recommended_var_3s, var_1_id):
+        if var_1_id in self.var_1_assignments.keys():
+            print(f"var_1 with id {var_1_id} has already been assigned.")
             return
 
-        # Attempt to assign a client to an available agent across recommended clusters
-        policy_queue = recommended_policies[:]
+        # Attempt to assign a var_1 to an available var_3 across recommended clusters
+        var_2_queue = recommended_var_3s[:]
 
-        while policy_queue:
-            policy_id = random.choice(policy_queue)
-            recommended_clusters = self.policy_to_cluster.get(policy_id, [])
+        while var_2_queue:
+            var_2_id = random.choice(var_2_queue)
+            recommended_clusters = self.var_2_to_cluster.get(var_2_id, [])
 
             for cluster_id in recommended_clusters:
                 cluster = self.clusters.get(cluster_id, None)
                 if cluster:
-                    res = cluster.assign_next_available_agent(client_id)
+                    res = cluster.assign_next_available_var_3(var_1_id)
                     if res != 0:
                         # Successfully assigned, record assignment
-                        self.client_assignments[client_id] = [res, cluster.label]
-                        print(f"Client {client_id} assigned to agent {res} in cluster {cluster.label}")
+                        self.var_1_assignments[var_1_id] = [res, cluster.label]
+                        print(f"var_1 {var_1_id} assigned to var_3 {res} in cluster {cluster.label}")
                         return
 
                 else:
-                    print(f"Cluster {cluster_id} does not exist for policy {policy_id}")
+                    print(f"Cluster {cluster_id} does not exist for var_2 {var_2_id}")
 
-            # If all clusters for the current policy are full, remove the policy and reattempt with a new one
-            policy_queue.remove(policy_id)
+            # If all clusters for the current var_2 are full, remove the var_2 and reattempt with a new one
+            var_2_queue.remove(var_2_id)
 
-        # If all policies are exhausted and no assignment was made, raise an exception
-        print(f"Could not assign client {client_id} to any agent for the recommended policies.")
-        self.unassigned_clients.append(client_id)
+        # If all var_3s are exhausted and no assignment was made, raise an exception
+        print(f"Could not assign var_1 {var_1_id} to any var_3 for the recommended var_3s.")
+        self.unassigned_var_1s.append(var_1_id)
         return
 
 
-    def update_agents_availability(self):
-        # Update agent availability after each assignment
+    def update_var_3s_availability(self):
+        # Update var_3 availability after each assignment
         for cluster in self.clusters.values():
-            for agent in cluster.agents:
-                agent.update_availability()
+            for var_3 in cluster.var_3s:
+                var_3.update_availability()
 
-    def unassign_client(self, client_id):
-        assigned_agent, cluster_label = self.client_assignments[client_id][0], self.client_assignments[client_id][1]
-        print(assigned_agent, cluster_label)
+    def unassign_var_1(self, var_1_id):
+        assigned_var_3, cluster_label = self.var_1_assignments[var_1_id][0], self.var_1_assignments[var_1_id][1]
+        print(assigned_var_3, cluster_label)
         cluster = self.clusters[cluster_label]
-        cluster.agent_tracker[assigned_agent].unassign_client(client_id)
-        print(f"Client {client_id} has been unassigned from {assigned_agent} in Cluster {cluster_label}")
+        cluster.var_3_tracker[assigned_var_3].unassign_var_1(var_1_id)
+        print(f"var_1 {var_1_id} has been unassigned from {assigned_var_3} in Cluster {cluster_label}")
         return
 
 """# Full Integration #"""
@@ -608,24 +608,25 @@ TOP_K=3
 
 def deploy():
   # Step 1: create global workload manager
-  workload_manager = WorkloadManager(agent_df)
+  workload_manager = WorkloadManager(var_3_df)
   for sample in test:
-    # Step 2: get the recommended_policies
-    client_id = sample["client_id"].numpy()
-    true_policy = sample["policy_id"].numpy()
-    client_features = sample["client_features"].numpy()
-    recommended_policies, _ = recommend_policies(final_model, client_id, client_features, top_k=TOP_K)
-    # Step 3: assign clients accordingly
-    workload_manager.assign_client_to_agent(recommended_policies, client_id)
+    # Step 2: get the recommended_var_3s
+    var_1_id = sample["var_1_id"].numpy()
+    true_var_2 = sample["var_2_id"].numpy()
+    var_1_features = sample["var_1_features"].numpy()
+    recommended_var_3s, _ = recommend_var_3s(final_model, var_1_id, var_1_features, top_k=TOP_K)
+    # Step 3: assign var_1s accordingly
+    workload_manager.assign_var_1_to_var_3(recommended_var_3s, var_1_id)
 
-  workload_manager.update_agents_availability()
-  print(f"Workload Manager with {workload_manager.total_agents} agents created.")
+  workload_manager.update_var_3s_availability()
+  print(f"Workload Manager with {workload_manager.total_var_3s} var_3s created.")
   return workload_manager
 
 workload_manager = deploy()
 
 # now we can see the features of the workload manager
 
-workload_manager.client_assignments
+workload_manager.var_1_assignments
 
-workload_manager.clusters[1].agents[0].id
+workload_manager.clusters[1].var_3s[0].id
+\end{document}
